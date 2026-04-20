@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 
 from ai_model import detect_anomaly
 from blockchain import Blockchain
+from llm_explainer import explain_log
 
 
 # Create the Flask application instance.
@@ -48,6 +49,9 @@ def add_log():
 
     # Detect whether the new log entry is normal or suspicious.
     log_entry["status"] = detect_anomaly(log_entry)
+
+    # Explain the anomaly result in human-readable text.
+    log_entry["explanation"] = explain_log(log_entry)
 
     # Save the log entry in the global list.
     logs.append(log_entry)

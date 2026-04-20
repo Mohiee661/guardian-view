@@ -21,16 +21,13 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { Activity, Database, FileText, RefreshCw, ShieldCheck } from "lucide-react";
 
-// Backend base URL — assumes Flask runs on same origin or proxied.
-// Change to e.g. "http://localhost:5000" if needed.
-const API_BASE = "";
-
 type LogEntry = {
   user: string;
   timestamp: string;
   action: string;
   resource: string;
   status?: string;
+  explanation?: string;
 };
 
 type Block = {
@@ -40,8 +37,8 @@ type Block = {
   previous_hash: string;
 };
 
-const short = (h: string) =>
-  !h ? "—" : h.length > 14 ? `${h.slice(0, 8)}…${h.slice(-6)}` : h;
+const short = (hash: string) =>
+  !hash ? "-" : hash.length > 14 ? `${hash.slice(0, 8)}...${hash.slice(-6)}` : hash;
 
 const Index = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -56,80 +53,99 @@ const Index = () => {
     resource: "",
   });
 
-  // Fetch logs + chain in parallel from Flask backend
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  // Fetch logs from the Flask backend and display them in the table.
+  const loadLogs = useCallback(async () => {
     try {
-      const [logsRes, chainRes] = await Promise.all([
-        fetch(`${API_BASE}/logs`),
-        fetch(`${API_BASE}/chain`),
-      ]);
-      if (logsRes.ok) {
-        const data = await logsRes.json();
-        setLogs(Array.isArray(data) ? data : data.logs ?? []);
+      const response = await fetch("/logs");
+      if (!response.ok) {
+        throw new Error("Failed to load logs");
       }
-      if (chainRes.ok) {
-        const data = await chainRes.json();
-        setChain(Array.isArray(data) ? data : data.chain ?? []);
-      }
+
+      const data = await response.json();
+      setLogs(Array.isArray(data) ? data : data.logs ?? []);
     } catch (err) {
-      toast({
-        title: "Connection error",
-        description: "Could not reach backend API.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
+      console.error("Error loading logs:", err);
+      alert("Failed to load logs.");
     }
   }, []);
 
-  // Auto-fetch on page load
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // Fetch blockchain data from the Flask backend and display each block.
+  const loadChain = useCallback(async () => {
+    try {
+      const response = await fetch("/chain");
+      if (!response.ok) {
+        throw new Error("Failed to load blockchain");
+      }
 
-  // POST a new log to the backend
+      const data = await response.json();
+      setChain(Array.isArray(data) ? data : data.chain ?? []);
+    } catch (err) {
+      console.error("Error loading blockchain:", err);
+      alert("Failed to load blockchain.");
+    }
+  }, []);
+
+  // Reload logs and blockchain data when the Refresh button is clicked.
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      await Promise.all([loadLogs(), loadChain()]);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadLogs, loadChain]);
+
+  // Auto-load logs and blockchain data when the page opens.
+  useEffect(() => {
+    loadLogs();
+    loadChain();
+  }, [loadLogs, loadChain]);
+
+  // Capture form input and send it to the Flask backend without reloading.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!form.user || !form.timestamp || !form.resource) {
       toast({ title: "Missing fields", description: "Fill out all fields." });
       return;
     }
+
     setSubmitting(true);
+
     try {
-      const res = await fetch(`${API_BASE}/add_log`, {
+      const response = await fetch("/add_log", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
-      if (!res.ok) throw new Error("Request failed");
-      toast({ title: "Log added", description: `${form.user} · ${form.action}` });
+
+      if (!response.ok) {
+        throw new Error("Failed to add log");
+      }
+
+      toast({ title: "Log added", description: `${form.user} - ${form.action}` });
       setForm({ user: "", timestamp: "", action: "login", resource: "" });
-      refresh();
-    } catch {
-      toast({
-        title: "Failed to add log",
-        description: "Backend rejected the request.",
-        variant: "destructive",
-      });
+      await Promise.all([loadLogs(), loadChain()]);
+    } catch (err) {
+      console.error("Error adding log:", err);
+      alert("Failed to add log.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isSuspicious = (l: LogEntry) =>
-    (l.status ?? "").toLowerCase().includes("suspicious") ||
-    l.action === "file_delete";
+  const isSuspicious = (log: LogEntry) =>
+    (log.status ?? "").toLowerCase().includes("suspicious") ||
+    log.action === "file_delete";
 
   return (
     <div className="min-h-screen bg-background">
       <div className="mx-auto max-w-7xl px-6 py-10">
-        {/* Header */}
         <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground shadow-soft">
               <ShieldCheck className="h-3.5 w-3.5 text-accent" />
-              AI · Blockchain Security Suite
+              AI + Blockchain Security Suite
             </div>
             <h1 className="text-4xl font-semibold tracking-tight text-foreground md:text-5xl">
               Insider Threat Detection Dashboard
@@ -147,9 +163,7 @@ const Index = () => {
           </div>
         </header>
 
-        {/* Top grid: Add Log + Blockchain */}
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* A. Add Log */}
           <section className="rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg lg:col-span-1">
             <div className="mb-5 flex items-center gap-2">
               <FileText className="h-5 w-5 text-accent" />
@@ -178,7 +192,7 @@ const Index = () => {
                 <Label>Action</Label>
                 <Select
                   value={form.action}
-                  onValueChange={(v) => setForm({ ...form, action: v })}
+                  onValueChange={(value) => setForm({ ...form, action: value })}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -200,12 +214,11 @@ const Index = () => {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Adding…" : "Add Log"}
+                {submitting ? "Adding..." : "Add Log"}
               </Button>
             </form>
           </section>
 
-          {/* C. Blockchain Viewer */}
           <section className="rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg lg:col-span-2">
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -222,28 +235,30 @@ const Index = () => {
                   No blocks yet.
                 </p>
               )}
-              {chain.map((b) => (
+              {chain.map((block) => (
                 <div
-                  key={b.index}
+                  key={block.index}
                   className="rounded-xl border border-border bg-background/60 p-4 transition-colors hover:bg-muted/50"
                 >
                   <div className="mb-2 flex items-center justify-between">
                     <span className="font-serif text-lg font-semibold">
-                      Block #{b.index}
+                      Block #{block.index}
                     </span>
                     <span className="font-mono text-xs text-muted-foreground">
-                      {String(b.timestamp)}
+                      {String(block.timestamp)}
                     </span>
                   </div>
                   <div className="grid gap-1 font-mono text-xs">
                     <div className="flex gap-2">
                       <span className="w-24 text-muted-foreground">hash</span>
-                      <span className="truncate text-foreground">{short(b.hash)}</span>
+                      <span className="truncate text-foreground">
+                        {short(block.hash)}
+                      </span>
                     </div>
                     <div className="flex gap-2">
                       <span className="w-24 text-muted-foreground">prev</span>
                       <span className="truncate text-muted-foreground">
-                        {short(b.previous_hash)}
+                        {short(block.previous_hash)}
                       </span>
                     </div>
                   </div>
@@ -253,7 +268,6 @@ const Index = () => {
           </section>
         </div>
 
-        {/* B. Logs Table */}
         <section className="mt-6 rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg">
           <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -280,6 +294,7 @@ const Index = () => {
                   <TableHead>Time</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead>Resource</TableHead>
+                  <TableHead>Explanation</TableHead>
                   <TableHead className="text-right">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -287,34 +302,40 @@ const Index = () => {
                 {logs.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-10 text-center text-muted-foreground"
                     >
                       No logs recorded yet.
                     </TableCell>
                   </TableRow>
                 )}
-                {logs.map((l, i) => {
-                  const sus = isSuspicious(l);
+                {logs.map((log, index) => {
+                  const suspicious = isSuspicious(log);
+
                   return (
                     <TableRow
-                      key={i}
-                      className={sus ? "bg-destructive/5 hover:bg-destructive/10" : ""}
+                      key={index}
+                      className={
+                        suspicious ? "bg-destructive/5 hover:bg-destructive/10" : ""
+                      }
                     >
-                      <TableCell className="font-medium">{l.user}</TableCell>
+                      <TableCell className="font-medium">{log.user}</TableCell>
                       <TableCell className="font-mono text-sm text-muted-foreground">
-                        {l.timestamp}
+                        {log.timestamp}
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{l.action}</TableCell>
+                      <TableCell className="font-mono text-sm">{log.action}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {l.resource}
+                        {log.resource}
+                      </TableCell>
+                      <TableCell className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+                        {log.explanation ?? "No explanation available."}
                       </TableCell>
                       <TableCell className="text-right">
                         <Badge
-                          variant={sus ? "destructive" : "secondary"}
+                          variant={suspicious ? "destructive" : "secondary"}
                           className="font-medium"
                         >
-                          {sus ? "Suspicious" : l.status ?? "Normal"}
+                          {suspicious ? "Suspicious" : log.status ?? "Normal"}
                         </Badge>
                       </TableCell>
                     </TableRow>
@@ -326,7 +347,7 @@ const Index = () => {
         </section>
 
         <footer className="mt-10 text-center text-xs text-muted-foreground">
-          Secured by AI heuristics &amp; immutable blockchain ledger
+          Secured by AI heuristics and immutable blockchain ledger
         </footer>
       </div>
     </div>
