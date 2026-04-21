@@ -27,6 +27,7 @@ type LogEntry = {
   action: string;
   resource: string;
   status?: string;
+  risk_score?: number;
   explanation?: string;
 };
 
@@ -137,6 +138,18 @@ const Index = () => {
   const isSuspicious = (log: LogEntry) =>
     (log.status ?? "").toLowerCase().includes("suspicious") ||
     log.action === "file_delete";
+
+  const getRiskClassName = (score: number) => {
+    if (score > 70) {
+      return "border-destructive/30 bg-destructive/10 text-destructive";
+    }
+
+    if (score >= 40) {
+      return "border-yellow-500/30 bg-yellow-500/10 text-yellow-700";
+    }
+
+    return "border-success/30 bg-success/10 text-success";
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -294,6 +307,7 @@ const Index = () => {
                   <TableHead>Time</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead>Resource</TableHead>
+                  <TableHead>Risk Score</TableHead>
                   <TableHead>Explanation</TableHead>
                   <TableHead className="text-right">Status</TableHead>
                 </TableRow>
@@ -302,7 +316,7 @@ const Index = () => {
                 {logs.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="py-10 text-center text-muted-foreground"
                     >
                       No logs recorded yet.
@@ -311,6 +325,7 @@ const Index = () => {
                 )}
                 {logs.map((log, index) => {
                   const suspicious = isSuspicious(log);
+                  const riskScore = log.risk_score ?? 0;
 
                   return (
                     <TableRow
@@ -326,6 +341,11 @@ const Index = () => {
                       <TableCell className="font-mono text-sm">{log.action}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {log.resource}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`font-mono ${getRiskClassName(riskScore)}`}>
+                          {riskScore}
+                        </Badge>
                       </TableCell>
                       <TableCell className="max-w-sm text-xs leading-relaxed text-muted-foreground">
                         {log.explanation ?? "No explanation available."}
