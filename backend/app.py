@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 from ai_model import detect_anomaly
 from blockchain import Blockchain
@@ -7,6 +8,7 @@ from llm_explainer import calculate_risk_score, explain_log
 
 # Create the Flask application instance.
 app = Flask(__name__)
+CORS(app)
 
 
 # Store log entries in memory while the server is running.

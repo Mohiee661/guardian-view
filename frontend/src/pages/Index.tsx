@@ -19,7 +19,17 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Activity, Database, FileText, RefreshCw, ShieldCheck } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  Database,
+  FileText,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
 
 type LogEntry = {
   user: string;
@@ -38,12 +48,59 @@ type Block = {
   previous_hash: string;
 };
 
+type RiskLevel = "Low" | "Medium" | "High";
+
 const short = (hash: string) =>
   !hash ? "-" : hash.length > 14 ? `${hash.slice(0, 8)}...${hash.slice(-6)}` : hash;
+
+const buildApiUrl = (path: string) => {
+  if (!API_BASE_URL) {
+    throw new Error("Missing VITE_API_URL environment variable.");
+  }
+
+  return `${API_BASE_URL}${path}`;
+};
+
+const getRiskLevel = (score: number): RiskLevel => {
+  if (score > 70) return "High";
+  if (score >= 40) return "Medium";
+  return "Low";
+};
+
+const getRiskClassName = (score: number) => {
+  const level = getRiskLevel(score);
+
+  if (level === "High") {
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  }
+
+  if (level === "Medium") {
+    return "border-yellow-500/30 bg-yellow-500/10 text-yellow-700";
+  }
+
+  return "border-success/30 bg-success/10 text-success";
+};
+
+const getSuggestedAction = (log: LogEntry) => {
+  const score = log.risk_score ?? 0;
+  const level = getRiskLevel(score);
+
+  if (level === "High") {
+    return "Review immediately, verify the user, and restrict access if needed.";
+  }
+
+  if (level === "Medium") {
+    return "Monitor the activity and confirm it matches expected work.";
+  }
+
+  return "No immediate action required. Continue normal monitoring.";
+};
 
 const Index = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [chain, setChain] = useState<Block[]>([]);
+  const [latestAnalysis, setLatestAnalysis] = useState<LogEntry | null>(null);
+  const [errorMessage, setErrorMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,41 +111,53 @@ const Index = () => {
     resource: "",
   });
 
-  // Fetch logs from the Flask backend and display them in the table.
+  const showError = (message: string, error: unknown) => {
+    console.error(message, error);
+    setErrorMessage(message);
+    toast({
+      title: "Something went wrong",
+      description: message,
+      variant: "destructive",
+    });
+  };
+
+  // Fetch logs from the deployed Flask backend and display them in the table.
   const loadLogs = useCallback(async () => {
     try {
-      const response = await fetch("/logs");
+      const response = await fetch(buildApiUrl("/logs"));
       if (!response.ok) {
-        throw new Error("Failed to load logs");
+        throw new Error("The backend could not load logs.");
       }
 
       const data = await response.json();
-      setLogs(Array.isArray(data) ? data : data.logs ?? []);
+      const nextLogs = Array.isArray(data) ? data : data.logs ?? [];
+      setLogs(nextLogs);
+      setErrorMessage("");
     } catch (err) {
-      console.error("Error loading logs:", err);
-      alert("Failed to load logs.");
+      showError("Unable to load activity logs. Please try again.", err);
     }
   }, []);
 
-  // Fetch blockchain data from the Flask backend and display each block.
+  // Fetch blockchain data from the deployed Flask backend.
   const loadChain = useCallback(async () => {
     try {
-      const response = await fetch("/chain");
+      const response = await fetch(buildApiUrl("/chain"));
       if (!response.ok) {
-        throw new Error("Failed to load blockchain");
+        throw new Error("The backend could not load the blockchain.");
       }
 
       const data = await response.json();
       setChain(Array.isArray(data) ? data : data.chain ?? []);
+      setErrorMessage("");
     } catch (err) {
-      console.error("Error loading blockchain:", err);
-      alert("Failed to load blockchain.");
+      showError("Unable to load blockchain data. Please try again.", err);
     }
   }, []);
 
   // Reload logs and blockchain data when the Refresh button is clicked.
   const refresh = useCallback(async () => {
     setLoading(true);
+
     try {
       await Promise.all([loadLogs(), loadChain()]);
     } finally {
@@ -98,11 +167,10 @@ const Index = () => {
 
   // Auto-load logs and blockchain data when the page opens.
   useEffect(() => {
-    loadLogs();
-    loadChain();
-  }, [loadLogs, loadChain]);
+    refresh();
+  }, [refresh]);
 
-  // Capture form input and send it to the Flask backend without reloading.
+  // Capture form input and send it to the deployed Flask backend.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -112,24 +180,28 @@ const Index = () => {
     }
 
     setSubmitting(true);
+    setErrorMessage("");
 
     try {
-      const response = await fetch("/add_log", {
+      const response = await fetch(buildApiUrl("/add_log"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
 
       if (!response.ok) {
-        throw new Error("Failed to add log");
+        throw new Error("The backend rejected this log entry.");
       }
 
-      toast({ title: "Log added", description: `${form.user} - ${form.action}` });
+      const result = await response.json();
+      const savedLog = result.log as LogEntry;
+
+      setLatestAnalysis(savedLog);
+      toast({ title: "Log analyzed", description: `${form.user} - ${form.action}` });
       setForm({ user: "", timestamp: "", action: "login", resource: "" });
       await Promise.all([loadLogs(), loadChain()]);
     } catch (err) {
-      console.error("Error adding log:", err);
-      alert("Failed to add log.");
+      showError("Unable to analyze this log. Please check the backend URL.", err);
     } finally {
       setSubmitting(false);
     }
@@ -137,19 +209,7 @@ const Index = () => {
 
   const isSuspicious = (log: LogEntry) =>
     (log.status ?? "").toLowerCase().includes("suspicious") ||
-    log.action === "file_delete";
-
-  const getRiskClassName = (score: number) => {
-    if (score > 70) {
-      return "border-destructive/30 bg-destructive/10 text-destructive";
-    }
-
-    if (score >= 40) {
-      return "border-yellow-500/30 bg-yellow-500/10 text-yellow-700";
-    }
-
-    return "border-success/30 bg-success/10 text-success";
-  };
+    getRiskLevel(log.risk_score ?? 0) === "High";
 
   return (
     <div className="min-h-screen bg-background">
@@ -175,6 +235,13 @@ const Index = () => {
             <span className="text-sm font-medium text-foreground">System Active</span>
           </div>
         </header>
+
+        {errorMessage && (
+          <div className="mb-6 flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <p>{errorMessage}</p>
+          </div>
+        )}
 
         <div className="grid gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg lg:col-span-1">
@@ -227,7 +294,8 @@ const Index = () => {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? "Adding..." : "Add Log"}
+                {submitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {submitting ? "Analyzing..." : "Analyze Log"}
               </Button>
             </form>
           </section>
@@ -235,51 +303,101 @@ const Index = () => {
           <section className="rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg lg:col-span-2">
             <div className="mb-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Database className="h-5 w-5 text-accent" />
-                <h2 className="text-xl font-semibold">Blockchain Viewer</h2>
+                <Activity className="h-5 w-5 text-accent" />
+                <h2 className="text-xl font-semibold">Latest Analysis</h2>
               </div>
-              <Badge variant="secondary" className="font-mono text-xs">
-                {chain.length} blocks
-              </Badge>
-            </div>
-            <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
-              {chain.length === 0 && (
-                <p className="py-10 text-center text-sm text-muted-foreground">
-                  No blocks yet.
-                </p>
+              {latestAnalysis && (
+                <Badge className={getRiskClassName(latestAnalysis.risk_score ?? 0)}>
+                  {getRiskLevel(latestAnalysis.risk_score ?? 0)} Risk
+                </Badge>
               )}
-              {chain.map((block) => (
-                <div
-                  key={block.index}
-                  className="rounded-xl border border-border bg-background/60 p-4 transition-colors hover:bg-muted/50"
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-serif text-lg font-semibold">
-                      Block #{block.index}
-                    </span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {String(block.timestamp)}
-                    </span>
-                  </div>
-                  <div className="grid gap-1 font-mono text-xs">
-                    <div className="flex gap-2">
-                      <span className="w-24 text-muted-foreground">hash</span>
-                      <span className="truncate text-foreground">
-                        {short(block.hash)}
-                      </span>
-                    </div>
-                    <div className="flex gap-2">
-                      <span className="w-24 text-muted-foreground">prev</span>
-                      <span className="truncate text-muted-foreground">
-                        {short(block.previous_hash)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
             </div>
+
+            {!latestAnalysis ? (
+              <p className="py-16 text-center text-sm text-muted-foreground">
+                Submit a log to see risk level, reason, and suggested action.
+              </p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Risk Level
+                  </p>
+                  <p className="mt-2 text-2xl font-semibold">
+                    {getRiskLevel(latestAnalysis.risk_score ?? 0)}
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-muted-foreground">
+                    Score: {latestAnalysis.risk_score ?? 0}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Reason
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {latestAnalysis.explanation ?? "No explanation available."}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border bg-background/60 p-4">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Suggested Action
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                    {getSuggestedAction(latestAnalysis)}
+                  </p>
+                </div>
+              </div>
+            )}
           </section>
         </div>
+
+        <section className="mt-6 rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-accent" />
+              <h2 className="text-xl font-semibold">Blockchain Viewer</h2>
+            </div>
+            <Badge variant="secondary" className="font-mono text-xs">
+              {chain.length} blocks
+            </Badge>
+          </div>
+          <div className="max-h-[420px] space-y-3 overflow-y-auto pr-2">
+            {chain.length === 0 && (
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                No blocks yet.
+              </p>
+            )}
+            {chain.map((block) => (
+              <div
+                key={block.index}
+                className="rounded-xl border border-border bg-background/60 p-4 transition-colors hover:bg-muted/50"
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-serif text-lg font-semibold">
+                    Block #{block.index}
+                  </span>
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {String(block.timestamp)}
+                  </span>
+                </div>
+                <div className="grid gap-1 font-mono text-xs">
+                  <div className="flex gap-2">
+                    <span className="w-24 text-muted-foreground">hash</span>
+                    <span className="truncate text-foreground">
+                      {short(block.hash)}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <span className="w-24 text-muted-foreground">prev</span>
+                    <span className="truncate text-muted-foreground">
+                      {short(block.previous_hash)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="mt-6 rounded-2xl border border-border bg-card p-6 shadow-card transition-shadow hover:shadow-lg">
           <div className="mb-5 flex items-center justify-between">
@@ -307,6 +425,7 @@ const Index = () => {
                   <TableHead>Time</TableHead>
                   <TableHead>Action</TableHead>
                   <TableHead>Resource</TableHead>
+                  <TableHead>Risk Level</TableHead>
                   <TableHead>Risk Score</TableHead>
                   <TableHead>Explanation</TableHead>
                   <TableHead className="text-right">Status</TableHead>
@@ -316,7 +435,7 @@ const Index = () => {
                 {logs.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={8}
                       className="py-10 text-center text-muted-foreground"
                     >
                       No logs recorded yet.
@@ -341,6 +460,11 @@ const Index = () => {
                       <TableCell className="font-mono text-sm">{log.action}</TableCell>
                       <TableCell className="text-muted-foreground">
                         {log.resource}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={getRiskClassName(riskScore)}>
+                          {getRiskLevel(riskScore)}
+                        </Badge>
                       </TableCell>
                       <TableCell>
                         <Badge className={`font-mono ${getRiskClassName(riskScore)}`}>

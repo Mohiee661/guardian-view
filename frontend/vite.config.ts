@@ -11,11 +11,6 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
-    proxy: {
-      "/add_log": "http://127.0.0.1:5000",
-      "/logs": "http://127.0.0.1:5000",
-      "/chain": "http://127.0.0.1:5000",
-    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
