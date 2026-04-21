@@ -13,6 +13,7 @@ LLM explanations, and a React/Vite frontend.
 
 ```bash
 cd backend
+pip install -r requirements.txt
 python app.py
 ```
 
@@ -27,3 +28,19 @@ npm run dev
 ```
 
 Frontend runs at `http://127.0.0.1:8080`.
+
+## Deploy Backend on Render
+
+Use these settings if the Render service root is the repository root:
+
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `gunicorn --chdir backend app:app`
+
+Add this environment variable in Render:
+
+- `GROQ_API_KEY`
+
+If you set Render's Root Directory to `backend`, use:
+
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `gunicorn app:app`
