@@ -14,7 +14,45 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      findings: {
+        Row: {
+          context: string | null
+          created_at: string
+          domain: string | null
+          id: string
+          matched_value: string
+          pattern_type: string
+          risk_score: number
+          severity: Database["public"]["Enums"]["severity_level"]
+          source: string | null
+          status: string
+        }
+        Insert: {
+          context?: string | null
+          created_at?: string
+          domain?: string | null
+          id?: string
+          matched_value: string
+          pattern_type: string
+          risk_score?: number
+          severity?: Database["public"]["Enums"]["severity_level"]
+          source?: string | null
+          status?: string
+        }
+        Update: {
+          context?: string | null
+          created_at?: string
+          domain?: string | null
+          id?: string
+          matched_value?: string
+          pattern_type?: string
+          risk_score?: number
+          severity?: Database["public"]["Enums"]["severity_level"]
+          source?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +61,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      severity_level: "critical" | "high" | "medium" | "low"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +188,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      severity_level: ["critical", "high", "medium", "low"],
+    },
   },
 } as const
