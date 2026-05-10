@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DarkShield — minimal SOC dashboard palette (Vercel/Linear/Stripe inspired) */
+
+@layer base {
+  :root {
+    /* Light fallback (kept for completeness, app is dark-first) */
+    --background: 0 0% 100%;
+    --foreground: 224 10% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 224 10% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 224 10% 12%;
+    --primary: 224 10% 12%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 224 10% 12%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 96%;
+    --accent-foreground: 224 10% 12%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 60% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+    --info: 217 70% 55%;
+    --info-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 224 10% 12%;
+
+    --severity-critical: 0 65% 55%;
+    --severity-high: 30 90% 55%;
+    --severity-medium: 217 50% 60%;
+    --severity-low: 220 9% 60%;
+
+    --shadow-soft: 0 1px 2px 0 hsl(0 0% 0% / 0.04), 0 1px 3px 0 hsl(0 0% 0% / 0.06);
+    --shadow-card: 0 4px 12px -4px hsl(0 0% 0% / 0.08);
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 99%;
+    --sidebar-foreground: 224 10% 25%;
+    --sidebar-primary: 224 10% 12%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 14% 96%;
+    --sidebar-accent-foreground: 224 10% 12%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 224 10% 12%;
+  }
+
+  .dark {
+    /* Near-black, soft contrast — Vercel/Linear-style SOC */
+    --background: 220 13% 6%;
+    --foreground: 220 14% 92%;
+
+    --card: 220 13% 8%;
+    --card-foreground: 220 14% 92%;
+
+    --popover: 220 13% 8%;
+    --popover-foreground: 220 14% 92%;
+
+    --primary: 220 14% 92%;
+    --primary-foreground: 220 13% 6%;
+
+    --secondary: 220 12% 12%;
+    --secondary-foreground: 220 14% 92%;
+
+    --muted: 220 12% 11%;
+    --muted-foreground: 220 9% 60%;
+
+    --accent: 220 12% 14%;
+    --accent-foreground: 220 14% 92%;
+
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 220 14% 96%;
+
+    --success: 142 50% 45%;
+    --success-foreground: 220 14% 96%;
+
+    --warning: 32 90% 55%;
+    --warning-foreground: 220 13% 6%;
+
+    --info: 217 60% 60%;
+    --info-foreground: 220 13% 6%;
+
+    --border: 220 12% 16%;
+    --input: 220 12% 16%;
+    --ring: 220 14% 70%;
+
+    --severity-critical: 0 60% 55%;
+    --severity-high: 28 85% 58%;
+    --severity-medium: 217 45% 62%;
+    --severity-low: 220 9% 55%;
+
+    --sidebar-background: 220 13% 7%;
+    --sidebar-foreground: 220 12% 70%;
+    --sidebar-primary: 220 14% 92%;
+    --sidebar-primary-foreground: 220 13% 6%;
+    --sidebar-accent: 220 12% 12%;
+    --sidebar-accent-foreground: 220 14% 92%;
+    --sidebar-border: 220 12% 14%;
+    --sidebar-ring: 220 14% 70%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply bg-background;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+    font-feature-settings: 'cv11', 'ss01', 'ss03';
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Inter', system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 600;
+  }
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+}
